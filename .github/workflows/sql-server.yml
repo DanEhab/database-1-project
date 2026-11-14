@@ -1,0 +1,54 @@
+name: SQL Server
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    env:
+      SA_PASSWORD: CiOnly_Passw0rd!   # throwaway password for the CI container only
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: CiOnly_Passw0rd!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'CiOnly_Passw0rd!' -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy scripts into the SQL Server container
+        run: |
+          docker cp database/schema.sql ${{ job.services.mssql.id }}:/tmp/schema.sql
+          docker cp tests/smoke_test.sql ${{ job.services.mssql.id }}:/tmp/smoke_test.sql
+
+      - name: Create the database
+        run: docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd -C -b -S localhost -U sa -P "$SA_PASSWORD" -Q "CREATE DATABASE Milestone2DB_24"
+
+      - name: Build all tables, views, functions and procedures
+        run: docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd -C -b -I -S localhost -U sa -P "$SA_PASSWORD" -i /tmp/schema.sql
+
+      - name: Check the object counts
+        run: |
+          docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd -C -b -h -1 -W -S localhost -U sa -P "$SA_PASSWORD" -d Milestone2DB_24 -Q "
+            SET NOCOUNT ON;
+            SELECT CONCAT('tables=', (SELECT COUNT(*) FROM sys.tables),
+                          ' views=', (SELECT COUNT(*) FROM sys.views),
+                          ' procedures=', (SELECT COUNT(*) FROM sys.procedures),
+                          ' functions=', (SELECT COUNT(*) FROM sys.objects WHERE type IN ('FN','IF','TF')));
+            IF (SELECT COUNT(*) FROM sys.tables) <> 19 OR (SELECT COUNT(*) FROM sys.views) <> 10
+               OR (SELECT COUNT(*) FROM sys.procedures) <> 13
+               OR (SELECT COUNT(*) FROM sys.objects WHERE type IN ('FN','IF','TF')) <> 15
+              THROW 50000, 'Unexpected number of database objects', 1;"
+
+      - name: Load sample data and test every object
+        run: docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd -C -b -I -S localhost -U sa -P "$SA_PASSWORD" -i /tmp/smoke_test.sql

@@ -108,4 +108,4 @@ CREATE DATABASE Milestone2DB_24;
 
 Built for **CSEN501 Databases I**, German University in Cairo, Winter 2024 (Dr. Mervat Abuelkheir). Team 120:
 
-Daniel Ehab · Mariam Elhariry · Yasmin Abdelaziz · Youssef Yasser · Nedal Sameh
+Daniel Ehab (team lead) · Mariam Elhariry · Yasmin Abdelaziz · Youssef Yasser · Nedal Sameh
